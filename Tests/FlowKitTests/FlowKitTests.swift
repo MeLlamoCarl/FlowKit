@@ -58,4 +58,16 @@ final class FlowKitTests: XCTestCase {
         XCTAssertEqual(MemoryLayout<FlowDropUniform>.stride, 48)
         XCTAssertEqual(MemoryLayout<FlowUniforms>.stride, 144)
     }
+
+    /// Real frames come at uneven intervals (display link jitter, dropped frames).
+    func testUnevenFramesStayStable() {
+        let sim = FlowSimulation(settings: FlowSettings(dropCount: 2, minSize: 0.2, maxSize: 0.3, speed: 1.7),
+                                 aspect: 1.6, colorCount: 2, seed: 5)
+        var rng = SeededRandom(seed: 9)
+        for _ in 0 ..< 3000 {
+            sim.step(rng.next(in: 0.000001 ... 0.05))
+        }
+        XCTAssertTrue(sim.x.allSatisfy(\.isFinite) && sim.y.allSatisfy(\.isFinite))
+        XCTAssertTrue(sim.x.allSatisfy { (0 ... 1.6).contains($0) } && sim.y.allSatisfy { (0 ... 1).contains($0) })
+    }
 }

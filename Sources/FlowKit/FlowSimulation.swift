@@ -99,13 +99,19 @@ public final class FlowSimulation {
 
     // MARK: Stepping
 
+    /// Time not yet simulated (less than one substep).
+    private var pendingTime = 0.0
+
+    /// Advances by `dt` in fixed substeps; the remainder carries over to the next call. (Odd,
+    /// tiny steps made velocities, which are derived from displacement / step, blow up.)
     public func step(_ dt: Double) {
-        let total = min(max(dt, 0), 1.0 / 15) * settings.speed // big gaps mustn't make drops jump
-        var left = total
-        while left > 1e-6 {
-            let h = min(left, Self.substep)
-            substep(h)
-            left -= h
+        pendingTime += min(max(dt, 0), 1.0 / 15) * settings.speed // big gaps mustn't make drops jump
+        while pendingTime >= Self.substep {
+            substep(Self.substep)
+            pendingTime -= Self.substep
+        }
+        if !drops.isFinite {
+            respawn(colorCount: max(colorIndices.count, 1))
         }
     }
 

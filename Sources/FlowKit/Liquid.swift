@@ -68,6 +68,11 @@ final class Liquid {
 
     var count: Int { x.count }
 
+    /// False if the simulation broke down (a safeguard; the drops are then poured in again).
+    var isFinite: Bool {
+        x.allSatisfy(\.isFinite) && y.allSatisfy(\.isFinite)
+    }
+
     func removeAll() {
         x = []; y = []; vx = []; vy = []; px = []; py = []; group = []; radii = []
     }
@@ -127,6 +132,14 @@ final class Liquid {
         let n = count
         guard n > 0 else { return }
         let h = self.h
+        // Work on local arrays (taken out, so they stay uniquely referenced): class properties
+        // pay for exclusivity checks on every access inside the pair loops.
+        var x = self.x, y = self.y, vx = self.vx, vy = self.vy, px = self.px, py = self.py
+        self.x = []; self.y = []; self.vx = []; self.vy = []; self.px = []; self.py = []
+        defer {
+            self.x = x; self.y = y; self.vx = vx; self.vy = vy; self.px = px; self.py = py
+        }
+        let group = self.group, radii = self.radii
 
         // Acceleration and drag.
         let damping = exp(-dt * p.drag)
@@ -137,7 +150,13 @@ final class Liquid {
         }
 
         // Cohesion: pull outer particles toward their body's center.
-        let centers = centers()
+        var sums = [SIMD2<Double>](repeating: .zero, count: radii.count)
+        var counts = [Double](repeating: 0, count: radii.count)
+        for i in 0 ..< n {
+            sums[group[i]] += SIMD2(x[i], y[i])
+            counts[group[i]] += 1
+        }
+        let centers = sums.indices.map { sums[$0] / max(counts[$0], 1) }
         for i in 0 ..< n {
             let c = centers[group[i]]
             let dx = x[i] - c.x, dy = y[i] - c.y
@@ -236,6 +255,8 @@ struct SpatialGrid {
         }
     }
 
+    private static let forwardNeighbours = [(0, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
+
     /// Calls `body(i, j, dx, dy, r)` once per pair closer than `radius` (dx, dy from i to j).
     func forEachPair(x: [Double], y: [Double], radius: Double, _ body: (Int, Int, Double, Double, Double) -> Void) {
         let r2 = radius * radius
@@ -245,7 +266,7 @@ struct SpatialGrid {
                 let a0 = starts[c], a1 = starts[c + 1]
                 guard a0 < a1 else { continue }
                 // This cell and the four "forward" neighbours, so each pair is seen once.
-                for (ox, oy) in [(0, 0), (1, 0), (-1, 1), (0, 1), (1, 1)] {
+                for (ox, oy) in Self.forwardNeighbours {
                     let nx = cx + ox, ny = cy + oy
                     guard nx >= 0, nx < columns, ny < rows else { continue }
                     let n = nx + ny * columns

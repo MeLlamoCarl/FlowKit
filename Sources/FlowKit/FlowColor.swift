@@ -35,7 +35,8 @@ public struct FlowColor: Codable, Hashable, Sendable {
         guard let srgb = CGColorSpace(name: CGColorSpace.sRGB),
               let converted = cgColor.converted(to: srgb, intent: .defaultIntent, options: nil),
               let c = converted.components, c.count >= 3 else { return nil }
-        self.init(red: Double(c[0]), green: Double(c[1]), blue: Double(c[2]))
+        func unit(_ x: CGFloat) -> Double { min(max(Double(x), 0), 1) } // extended sRGB → sRGB
+        self.init(red: unit(c[0]), green: unit(c[1]), blue: unit(c[2]))
     }
 
     var simd: SIMD4<Float> {
