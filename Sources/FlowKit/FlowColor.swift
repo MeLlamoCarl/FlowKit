@@ -98,3 +98,27 @@ extension FlowColor {
         return lch.color
     }
 }
+
+extension FlowColor {
+    /// A mix of two colors in OKLab: `amount` 0 is this color, 1 is `other`.
+    public func mixed(with other: FlowColor, amount: Double) -> FlowColor {
+        let t = min(max(amount, 0), 1)
+        let a = OKLCH(self), b = OKLCH(other)
+        let ax = a.c * cos(a.h) * (1 - t) + b.c * cos(b.h) * t
+        let ay = a.c * sin(a.h) * (1 - t) + b.c * sin(b.h) * t
+        return OKLCH(l: a.l * (1 - t) + b.l * t, c: hypot(ax, ay), h: atan2(ay, ax)).color
+    }
+}
+
+extension FlowPalette {
+    /// A mix of two palettes (for transitions); drop colors are paired in turn.
+    public func mixed(with other: FlowPalette, amount: Double) -> FlowPalette {
+        let count = max(drops.count, other.drops.count)
+        return FlowPalette(
+            background: background.mixed(with: other.background, amount: amount),
+            liquid: liquid.mixed(with: other.liquid, amount: amount),
+            drops: (0 ..< count).map { drops[$0 % drops.count].mixed(with: other.drops[$0 % other.drops.count], amount: amount) },
+            halo: halo.mixed(with: other.halo, amount: amount)
+        )
+    }
+}

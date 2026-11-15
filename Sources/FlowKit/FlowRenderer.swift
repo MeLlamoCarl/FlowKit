@@ -23,9 +23,12 @@ public final class FlowRenderer: NSObject {
     private let sampler: MTLSamplerState
     public let simulation: FlowSimulation
 
+    /// The palette being shown, or faded to.
     public private(set) var palette: FlowPalette
-    private var backgroundLight = FlowColor(red: 0, green: 0, blue: 0)
-    private var backgroundDark = FlowColor(red: 0, green: 0, blue: 0)
+    /// Palette fade: from this one to `palette`, starting at `transitionStart`.
+    private var transitionFrom: FlowPalette?
+    private var transitionStart: CFTimeInterval = 0
+    private var transitionDuration: Double = 0
     private var trail: [MTLTexture] = []
     private var density: MTLTexture?
     /// The same particles splatted much larger: the liquid's broad, smooth shape, for its wide
@@ -94,11 +97,24 @@ public final class FlowRenderer: NSObject {
         setPalette(palette)
     }
 
-    public func setPalette(_ palette: FlowPalette) {
+    /// Shows a new palette, fading to it over `transition` seconds (while animating).
+    public func setPalette(_ palette: FlowPalette, transition: Double = 0) {
+        transitionFrom = transition > 0 && isAnimating ? shownPalette() : nil
+        transitionStart = CACurrentMediaTime()
+        transitionDuration = transition
         self.palette = palette
-        backgroundLight = palette.background.shifted(lightness: 0.04)
-        backgroundDark = palette.background.shifted(lightness: -0.07)
         simulation.update(settings: simulation.settings, colorCount: palette.drops.count)
+    }
+
+    /// The palette on screen right now (mid-fade during a transition).
+    private func shownPalette() -> FlowPalette {
+        guard let from = transitionFrom else { return palette }
+        let t = (CACurrentMediaTime() - transitionStart) / max(transitionDuration, 1e-6)
+        guard t < 1 else {
+            transitionFrom = nil
+            return palette
+        }
+        return from.mixed(with: palette, amount: t * t * (3 - 2 * t))
     }
 
     public func setSettings(_ settings: FlowSettings) {
@@ -122,10 +138,11 @@ public final class FlowRenderer: NSObject {
     // MARK: Encoding
 
     private func uniforms(size: CGSize, dt: Double) -> FlowUniforms {
-        FlowUniforms(
+        let palette = shownPalette()
+        return FlowUniforms(
             background: palette.background.simd,
-            backgroundLight: backgroundLight.simd,
-            backgroundDark: backgroundDark.simd,
+            backgroundLight: palette.background.shifted(lightness: 0.04).simd,
+            backgroundDark: palette.background.shifted(lightness: -0.07).simd,
             halo: palette.halo.simd,
             liquid: palette.liquid.simd,
             resolution: SIMD2(Float(size.width), Float(size.height)),
@@ -155,7 +172,7 @@ public final class FlowRenderer: NSObject {
     }
 
     private func dropData() -> [FlowDropUniform] {
-        let drops = simulation.renderDrops(palette: palette)
+        let drops = simulation.renderDrops(palette: shownPalette())
         return drops.isEmpty ? [FlowDropUniform(color: .zero, center: .zero, velocity: .zero, radius: 0)] : drops
     }
 
@@ -283,6 +300,17 @@ public final class FlowRenderer: NSObject {
     }
 
     // MARK: Offscreen
+
+    /// A still picture of a Flow (desktop pictures, thumbnails): the same `seed` gives the same
+    /// picture. `time` is how long the liquid moves before the picture is taken.
+    public static func still(palette: FlowPalette, settings: FlowSettings, width: Int, height: Int,
+                             seed: UInt64 = 7, time: Double = 6, grain: Float = 0) -> CGImage? {
+        let aspect = Double(width) / Double(max(height, 1))
+        guard let renderer = FlowRenderer(palette: palette, settings: settings, aspect: aspect, seed: seed) else { return nil }
+        renderer.grain = grain
+        renderer.advance(by: time, aspect: aspect)
+        return renderer.image(width: width, height: height)
+    }
 
     /// Renders the current state to an image (desktop pictures, thumbnails). The aspect ratio
     /// follows `width`/`height`; changing it starts the trail over, so call `advance` after.

@@ -13,9 +13,12 @@ public struct FlowView: NSViewRepresentable {
     public var isAnimating: Bool
     public var framesPerSecond: Int
     public var grain: Float
+    /// Seconds to fade between palettes when `palette` changes.
+    public var paletteTransition: Double
 
     public init(palette: FlowPalette, settings: FlowSettings, isAnimating: Bool = true,
-                framesPerSecond: Int = 30, grain: Float = 0.012) {
+                framesPerSecond: Int = 30, grain: Float = 0.012, paletteTransition: Double = 1.5) {
+        self.paletteTransition = paletteTransition
         self.palette = palette
         self.settings = settings
         self.isAnimating = isAnimating
@@ -46,7 +49,7 @@ public struct FlowView: NSViewRepresentable {
 
     private func update(_ view: MTKView, coordinator: Coordinator) {
         guard let renderer = coordinator.renderer else { return }
-        if renderer.palette != palette { renderer.setPalette(palette) }
+        if renderer.palette != palette { renderer.setPalette(palette, transition: paletteTransition) }
         if renderer.simulation.settings != settings.validated { renderer.setSettings(settings) }
         renderer.grain = grain
         renderer.isAnimating = isAnimating
