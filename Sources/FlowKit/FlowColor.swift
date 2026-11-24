@@ -4,6 +4,7 @@
 //
 
 import CoreGraphics
+import Foundation
 import simd
 
 /// An sRGB color (components 0...1). Codable so palettes can be stored as plain JSON.
@@ -39,8 +40,10 @@ public struct FlowColor: Codable, Hashable, Sendable {
         self.init(red: unit(c[0]), green: unit(c[1]), blue: unit(c[2]))
     }
 
-    var simd: SIMD4<Float> {
-        SIMD4(Float(red), Float(green), Float(blue), 1)
+    /// OKLab components, for the shaders.
+    var oklab: SIMD4<Float> {
+        let lch = OKLCH(self)
+        return SIMD4(Float(lch.l), Float(lch.c * cos(lch.h)), Float(lch.c * sin(lch.h)), 1)
     }
 }
 
